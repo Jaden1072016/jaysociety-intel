@@ -13,10 +13,23 @@ export const LOCKOUT_MINUTES = 15;
  * Checks a password against APP_PASSWORD_HASH (bcrypt, preferred) or APP_PASSWORD (plain env secret).
  * Comparison is constant-time for the plain variant.
  */
-export async function checkPassword(input: string, env = process.env): Promise<boolean> {
+/** Dashboard copy/paste often adds a trailing space, newline or wrapping quotes. Ignore those. */
+export function cleanSecret(v: string | undefined | null): string {
+  let s = (v ?? "").trim();
+  if (s.length >= 2 && ((s[0] === '"' && s.at(-1) === '"') || (s[0] === "'" && s.at(-1) === "'"))) s = s.slice(1, -1).trim();
+  return s;
+}
+
+export function passwordConfigured(env = process.env): boolean {
+  return Boolean(cleanSecret(env.APP_PASSWORD_HASH) || cleanSecret(env.APP_PASSWORD));
+}
+
+export async function checkPassword(rawInput: string, env = process.env): Promise<boolean> {
+  const input = rawInput.trim();
   if (!input) return false;
-  if (env.APP_PASSWORD_HASH) return bcrypt.compare(input, env.APP_PASSWORD_HASH);
-  const expected = env.APP_PASSWORD;
+  const hash = cleanSecret(env.APP_PASSWORD_HASH);
+  if (hash) return bcrypt.compare(input, hash);
+  const expected = cleanSecret(env.APP_PASSWORD);
   if (!expected) return false;
   const a = Buffer.from(input), b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -37,6 +50,10 @@ export type LoginResult = { ok: true; token: string } | { ok: false; error: stri
 
 /** Pure-ish login flow (DB for rate limiting) so it can be tested without Next request context. */
 export async function attemptLogin(ip: string, password: string): Promise<LoginResult> {
+  if (!passwordConfigured()) {
+    console.error("[auth] login attempted but APP_PASSWORD is empty on this service");
+    return { ok: false, error: "Login isn't set up yet: APP_PASSWORD is empty on the server." };
+  }
   if ((await recentFailures(ip)) >= MAX_FAILURES || (await recentFailures(null)) >= GLOBAL_MAX_FAILURES) {
     return { ok: false, error: `Too many attempts. Try again in ${LOCKOUT_MINUTES} minutes.` };
   }

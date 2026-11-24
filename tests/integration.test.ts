@@ -30,6 +30,9 @@ describe("authentication", () => {
     expect(await checkPassword("pw-123456", { APP_PASSWORD_HASH: hash } as unknown as NodeJS.ProcessEnv)).toBe(true);
     expect(await checkPassword("nope", { APP_PASSWORD_HASH: hash } as unknown as NodeJS.ProcessEnv)).toBe(false);
     expect(await checkPassword("x", {} as unknown as NodeJS.ProcessEnv)).toBe(false); // no password configured = locked
+    expect(await checkPassword("hunter2 ", { APP_PASSWORD: " hunter2\n" } as unknown as NodeJS.ProcessEnv)).toBe(true);
+    expect(await checkPassword("hunter2", { APP_PASSWORD: '"hunter2"' } as unknown as NodeJS.ProcessEnv)).toBe(true);
+    expect(await checkPassword("Hunter2", { APP_PASSWORD: "hunter2" } as unknown as NodeJS.ProcessEnv)).toBe(false);
   });
 
   it("locks out an IP after repeated failures", async () => {
