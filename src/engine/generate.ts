@@ -33,7 +33,7 @@ async function formatPatterns(now: Date) {
 }
 
 export async function gatherCandidates(now = new Date()): Promise<Candidate[]> {
-  const trends = await recentRelevantTrends(48, 0.2, now);
+  const trends = await recentRelevantTrends(48, 0.25, now);
   const outliers = await recentOutliers(10, 1.5, now);
   const since = new Date(now.getTime() - 7 * 86400_000);
   const recentTitles = await db.select({ creator: schema.creators.name, title: schema.videos.title }).from(schema.videos)

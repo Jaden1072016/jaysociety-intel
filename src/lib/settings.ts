@@ -34,11 +34,11 @@ export const DEFAULT_PROFILE: AudienceProfile = {
   summary:
     "Young adults into gaming, streaming culture, hip-hop and R&B, humor, internet culture, friendship content and lifestyle. Personality-driven, not gaming-only.",
   topics: {
-    gaming: ["gta", "gta 6", "gta vi", "fortnite", "2k", "nba 2k", "madden", "call of duty", "cod", "warzone", "minecraft", "roblox", "playstation", "ps5", "xbox", "nintendo", "switch 2", "valorant", "fc 26", "game", "gaming", "rockstar"],
+    gaming: ["gta", "gta 6", "gta vi", "fortnite", "2k", "nba 2k", "madden", "call of duty", "cod", "warzone", "minecraft", "roblox", "playstation", "ps5", "xbox", "nintendo", "switch 2", "valorant", "fc 26", "gaming", "rockstar", "video game"],
     streaming: ["twitch", "kick", "stream", "streamer", "subathon", "livestream", "youtube", "tiktok", "creator", "amp", "kai cenat", "duke dennis", "fanum", "plaqueboymax", "lacy", "stable ronaldo", "ddg", "raud", "ishowspeed", "adin ross"],
     music: ["album", "song", "single", "tour", "rapper", "rap", "hip hop", "hip-hop", "r&b", "rnb", "mixtape", "grammy", "bet awards", "billboard", "music video", "freestyle", "diss"],
-    humor: ["meme", "funny", "prank", "roast", "skit", "challenge", "viral"],
-    culture: ["sneaker", "jordan", "nike", "fashion", "drip", "dating", "relationship", "friends", "college", "nba", "nfl", "lebron", "super bowl"],
+    humor: ["funny", "prank", "roast", "skit", "challenge", "comedian", "comedy"],
+    culture: ["sneaker", "sneakers", "jordans", "fashion", "drip", "dating", "relationship", "meme", "internet", "viral video"],
     lifestyle: ["gym", "workout", "fitness", "car", "travel", "food", "mukbang", "apartment", "vlog"],
   },
   musicArtists: ["drake", "j. cole", "j cole", "partynextdoor", "bryson tiller", "jhené aiko", "jhene aiko", "future", "nino paid", "h.e.r.", "sza", "kendrick", "travis scott", "lil baby", "21 savage", "gunna", "chris brown", "brent faiyaz"],

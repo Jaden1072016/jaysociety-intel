@@ -8,6 +8,17 @@ import { getSetting } from "@/lib/settings";
 import { recordFailure, recordSuccess, type FetchLike } from "@/lib/ops";
 import { watchedCreatorNames } from "./creators";
 
+/**
+ * The trend's own title decides relevance. Headlines can only nudge it (max +0.1),
+ * because a generic word in a news headline shouldn't turn an unrelated sports story into a match.
+ */
+export function trendRelevance(title: string, headlines: string[], profile: Parameters<typeof scoreRelevance>[1], creators: string[]) {
+  const t = scoreRelevance(title, profile, creators);
+  const n = scoreRelevance(headlines.join(" \n "), profile, creators);
+  const boost = t.score > 0 ? Math.min(0.1, n.score * 0.25) : 0;
+  return { ...t, score: Math.round(Math.min(1, t.score + boost) * 100) / 100, excluded: t.excluded || n.excluded };
+}
+
 export type UpsertTrend = {
   source: string; title: string; url?: string | null; approxTraffic?: string | null; trafficNum?: number | null;
   publishedAt?: Date | null; news?: { title: string; url: string; source?: string }[]; supportLevel?: string;
@@ -23,8 +34,7 @@ export async function upsertTrends(items: UpsertTrend[], now = new Date()) {
     const key = normalizeKey(it.title);
     if (!key || seen.has(`${it.source}|${key}`)) continue; // dedupe within the batch
     seen.add(`${it.source}|${key}`);
-    const text = [it.title, ...(it.news ?? []).map((n) => n.title)].join(" \n ");
-    const rel = scoreRelevance(text, profile, creators);
+    const rel = trendRelevance(it.title, (it.news ?? []).map((n) => n.title), profile, creators);
     const res = await db.insert(schema.trends).values({
       source: it.source, key, title: it.title, url: it.url ?? null, approxTraffic: it.approxTraffic ?? null,
       trafficNum: it.trafficNum ?? null, publishedAt: it.publishedAt ?? null, news: it.news ?? [],
@@ -86,7 +96,7 @@ export async function ingestTwitchTop(opts: { fetchImpl?: FetchLike } = {}) {
   }
 }
 
-export async function recentRelevantTrends(hours = 48, minRelevance = 0.2, now = new Date()) {
+export async function recentRelevantTrends(hours = 48, minRelevance = 0.3, now = new Date()) {
   const since = new Date(now.getTime() - hours * 3_600_000);
   return db.select().from(schema.trends)
     .where(and(gte(schema.trends.lastSeenAt, since), gte(schema.trends.relevance, minRelevance), eq(schema.trends.dismissed, false)))

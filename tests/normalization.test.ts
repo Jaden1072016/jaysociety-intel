@@ -119,3 +119,15 @@ describe("provider parsing", () => {
     expect(platformOf("https://x.com/a/status/1")).toBe("x");
   });
 });
+
+describe("title-first trend relevance (from live production data)", () => {
+  it("sports stories don't match through generic words in their headlines", async () => {
+    const { trendRelevance } = await import("@/ingest/trends");
+    const p = (await import("@/lib/settings")).DEFAULT_PROFILE;
+    expect(trendRelevance("joe buck", ["Troy Aikman, Joe Buck feud ahead of the game"], p, []).score).toBe(0);
+    expect(trendRelevance("deni avdija", ["Deni Avdija cleared to return for NBA game"], p, []).score).toBe(0);
+    expect(trendRelevance("fortnite", [], p, []).score).toBeGreaterThanOrEqual(0.25);
+    const gta = trendRelevance("gta 6 trailer", ["Rockstar drops trailer"], p, []);
+    expect(gta.score).toBeGreaterThan(trendRelevance("gta 6 trailer", [], p, []).score - 0.001);
+  });
+});
