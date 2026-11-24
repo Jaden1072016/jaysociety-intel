@@ -9,6 +9,8 @@ import { runNow } from "@/jobs";
 import { dueSlot } from "@/jobs/scheduler";
 import { isConfigured } from "@/lib/config";
 import { resolveAccount } from "@/ingest/creators";
+import * as yt from "@/providers/youtube";
+import * as tw from "@/providers/twitch";
 
 const out = (s: string) => console.log(`[selftest] ${s}`);
 
@@ -54,6 +56,27 @@ export async function runSelfTest() {
     out(`  lookup ${a.platform} ${a.handle}: ${r ? `found "${after.displayName}" id=${after.externalId} followers=${after.followerCount ?? "n/a"}` : `not resolved: ${after.resolveError}`}`);
   }
 
+  // Read-only proof that creator video data comes back (nothing saved, nothing confirmed).
+  const sampleYt = (await db.select().from(schema.creatorAccounts)).filter((a) => a.platform === "youtube" && a.externalId && (a.followerCount ?? 0) > 100_000)
+    .sort((a, b) => (b.followerCount ?? 0) - (a.followerCount ?? 0))[0];
+  if (sampleYt?.uploadsPlaylist) {
+    try {
+      const vids = await yt.getVideos(await yt.recentUploadIds(sampleYt.uploadsPlaylist, 5));
+      out(`sample fetch (not saved) YouTube "${sampleYt.displayName}": ${vids.length} videos`);
+      for (const v of vids) out(`  ${v.publishedAt.toISOString()} views=${v.views} format=${v.format} "${v.title.slice(0, 70)}" ${v.url}`);
+    } catch (e) { out(`sample YouTube fetch failed: ${(e as Error).message}`); }
+  }
+  const sampleTw = (await db.select().from(schema.creatorAccounts)).find((a) => a.platform === "twitch" && a.externalId);
+  if (sampleTw) {
+    try {
+      const vids = (await tw.userVideos(sampleTw.externalId!, 5));
+      out(`sample fetch (not saved) Twitch "${sampleTw.displayName}": ${vids.length} videos`);
+      for (const v of vids) out(`  ${v.publishedAt.toISOString()} views=${v.views} format=${v.format} "${v.title.slice(0, 70)}" ${v.url}`);
+      const top = await tw.topCategories(5);
+      out(`  twitch top categories now: ${top.map((t) => t.name).join(", ")}`);
+    } catch (e) { out(`sample Twitch fetch failed: ${(e as Error).message}`); }
+  }
+
   // Creator ingestion needs confirmed accounts. Test on CONFIRMED ones only.
   out(`job creators: ${await runNow("creators")}`);
   const [vc] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.videos).where(eq(schema.videos.source, "api"));
@@ -65,7 +88,7 @@ export async function runSelfTest() {
   const opps = await db.select().from(schema.opportunities).orderBy(desc(schema.opportunities.createdAt)).limit(5);
   out(`opportunities in db: ${opps.length} shown`);
   for (const o of opps) {
-    out(`  idea "${o.title}" score=${o.totalScore} generator=${o.generator} evidence=${o.evidence.length}`);
+    out(`  idea "${o.title}" status=${o.status} score=${o.totalScore} generator=${o.generator} evidence=${o.evidence.length}`);
     for (const e of o.evidence.filter((x) => x.url).slice(0, 2)) out(`    link ${await checkLink(e.url!)} ${e.url}`);
   }
 
@@ -77,6 +100,8 @@ export async function runSelfTest() {
 
   const status = await db.select().from(schema.providerStatus);
   for (const s of status) out(`  status ${s.provider}: lastSuccess=${s.lastSuccessAt?.toISOString() ?? "never"} failures=${s.consecutiveFailures}${s.consecutiveFailures ? ` lastError=${s.lastError}` : ""}`);
+  const runs = await db.select().from(schema.jobRuns).orderBy(desc(schema.jobRuns.startedAt)).limit(12);
+  for (const r of runs.filter((x) => !x.slot.startsWith("manual"))) out(`  scheduled run ${r.job} slot=${r.slot} ${r.status} ${r.startedAt.toISOString()} ${r.message ?? ""}`.slice(0, 220));
   const [subs] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.pushSubscriptions);
   out(`push devices subscribed: ${subs.n}`);
   out("=== END ===");
