@@ -15,7 +15,7 @@ export function pushConfigured(): boolean {
 let configured = false;
 function setup() {
   if (configured || !pushConfigured()) return;
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:owner@example.com", process.env.VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || process.env.APP_URL || "mailto:owner@example.com", process.env.VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
   configured = true;
 }
 

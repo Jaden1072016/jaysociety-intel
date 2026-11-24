@@ -32,8 +32,18 @@ export const db: DB = new Proxy({} as DB, {
   },
 });
 
+const MIGRATION_LOCK = 724_310_991; // arbitrary constant shared by web + worker
+
+/** Web and worker both migrate on boot; an advisory lock makes them take turns. */
 export async function runMigrations() {
-  await migrate(getDb(), { migrationsFolder: path.join(process.cwd(), "drizzle") });
+  const client = await getPool().connect();
+  try {
+    await client.query("select pg_advisory_lock($1)", [MIGRATION_LOCK]);
+    await migrate(getDb(), { migrationsFolder: path.join(process.cwd(), "drizzle") });
+  } finally {
+    await client.query("select pg_advisory_unlock($1)", [MIGRATION_LOCK]).catch(() => {});
+    client.release();
+  }
 }
 
 export async function closeDb() {

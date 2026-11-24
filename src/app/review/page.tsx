@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { desc, eq, and, gte } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { experimentResults, ideaFormatReview, ownFormatReview, postingStrategy } from "@/engine/review";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 const fmt = (n: number | null | undefined, digits = 0) => (n == null ? "unavailable" : n.toLocaleString(undefined, { maximumFractionDigits: digits }));
 
 export default async function Review({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { msg } = await searchParams;
   const [own, ideaFormats, exps, posting, conns, ytDays, twDays] = await Promise.all([
     ownFormatReview(), ideaFormatReview(), experimentResults(), postingStrategy(),

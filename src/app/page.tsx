@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { topOpportunities } from "@/engine/generate";
@@ -12,6 +13,7 @@ import { SCORE_DISCLAIMER } from "@/engine/scoring";
 export const dynamic = "force-dynamic";
 
 export default async function Today({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { msg } = await searchParams;
   const now = new Date();
   const [opps, briefing, uploads, outliers, statuses, readyCount, creatorCount] = await Promise.all([

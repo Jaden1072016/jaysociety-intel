@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { addCost, monthCost, log, recordFailure, recordSuccess } from "@/lib/ops";
+import { and, eq, sql } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { addCost, log, recordFailure, recordSuccess } from "@/lib/ops";
 import { etDate } from "@/lib/time";
 import type { AiSettings, AudienceProfile } from "@/lib/settings";
 import type { Candidate } from "./candidates";
@@ -70,32 +72,64 @@ const dash = (s: string) => s.replace(/\s*[—–]\s*/g, ", ");
 
 export type ClaudeClient = { messages: { create: (p: any) => Promise<any> } };
 
+const MAX_OUTPUT_TOKENS = 4000;
+const CAP_LOCK = 724_310_992;
+
+/**
+ * Atomically check the month's spend and reserve a worst-case cost for this call.
+ * Worst case = every character a token (input can't exceed that) + max_tokens output,
+ * so actual cost can never be higher than the reservation and the cap is a hard ceiling.
+ * Serialized with an advisory lock so the worker and a manual refresh can't both slip under.
+ */
+export async function reserveSpend(month: string, day: string, worstCase: number, capUsd: number): Promise<{ ok: boolean; spent: number }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${CAP_LOCK})`);
+    const [r] = await tx.select({ c: sql<number>`coalesce(sum(${schema.apiUsage.costUsd}),0)::float` }).from(schema.apiUsage)
+      .where(and(eq(schema.apiUsage.provider, "claude"), sql`${schema.apiUsage.day} like ${month + "%"}`));
+    const spent = r?.c ?? 0;
+    if (spent + worstCase > capUsd) return { ok: false, spent };
+    await tx.insert(schema.apiUsage).values({ provider: "claude", day, costUsd: worstCase, requests: 1 })
+      .onConflictDoUpdate({
+        target: [schema.apiUsage.provider, schema.apiUsage.day],
+        set: { costUsd: sql`${schema.apiUsage.costUsd} + ${worstCase}`, requests: sql`${schema.apiUsage.requests} + 1` },
+      });
+    return { ok: true, spent };
+  });
+}
+
 /** Returns null (caller falls back to rules) when disabled, unconfigured, over the monthly cap, or on failure. */
 export async function claudeIdeas(cands: Candidate[], profile: AudienceProfile, ai: AiSettings, client?: ClaudeClient): Promise<GeneratedIdea[] | null> {
   if (!ai.enabled || !cands.length) return null;
   if (!client && !process.env.ANTHROPIC_API_KEY) return null;
-  const month = etDate().slice(0, 7);
-  const spent = await monthCost("claude", month);
+  const day = etDate();
+  const month = day.slice(0, 7);
   const { system, user } = buildPrompt(cands, profile);
-  const estIn = Math.ceil((system.length + user.length) / 3.5);
-  const estimate = costOf(ai.model, estIn, 4000);
-  if (spent + estimate > ai.monthlyCapUsd) {
-    await log("claude", "warn", `Monthly AI cap reached ($${spent.toFixed(3)} of $${ai.monthlyCapUsd}). Using rules generator.`);
+  const worstIn = system.length + user.length + 50; // a token is never shorter than one character
+  if (worstIn > 90_000) { await log("claude", "warn", "Prompt too large; skipping AI to stay in the low-price tier."); return null; }
+  const worstCase = costOf(ai.model, worstIn, MAX_OUTPUT_TOKENS);
+  const res0 = await reserveSpend(month, day, worstCase, ai.monthlyCapUsd);
+  if (!res0.ok) {
+    await log("claude", "warn", `Monthly AI cap reached ($${res0.spent.toFixed(4)} of $${ai.monthlyCapUsd}). Using rules generator.`);
     return null;
   }
+  let settled = false;
   try {
     const c = client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const res = await c.messages.create({
-      model: ai.model, max_tokens: 4000, system,
+      model: ai.model, max_tokens: MAX_OUTPUT_TOKENS, system,
       messages: [{ role: "user", content: `Candidates:\n${user}` }],
     });
-    const inTok = res.usage?.input_tokens ?? estIn, outTok = res.usage?.output_tokens ?? 0;
-    await addCost("claude", etDate(), costOf(ai.model, inTok, outTok));
+    const inTok = res.usage?.input_tokens ?? worstIn, outTok = res.usage?.output_tokens ?? MAX_OUTPUT_TOKENS;
+    // Settle the reservation down to the real cost (never up: real <= worst case).
+    await addCost("claude", day, Math.min(0, costOf(ai.model, inTok, outTok) - worstCase), false);
+    settled = true;
     const text = (res.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
     const ideas = parseIdeas(text);
     await recordSuccess("claude", `${ideas.length} ideas, ${inTok}+${outTok} tokens`);
     return ideas;
   } catch (e) {
+    // A request that errored before producing usage isn't billed; release the reservation.
+    if (!settled) await addCost("claude", day, -worstCase, false).catch(() => {});
     await recordFailure("claude", e);
     return null;
   }

@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addCreator } from "../actions";
@@ -8,6 +9,7 @@ import { relTime } from "@/lib/time";
 export const dynamic = "force-dynamic";
 
 export default async function Creators({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { msg } = await searchParams;
   const creators = await db.select().from(schema.creators).where(eq(schema.creators.isSelf, false)).orderBy(asc(schema.creators.priority), asc(schema.creators.name));
   const accounts = await db.select().from(schema.creatorAccounts);

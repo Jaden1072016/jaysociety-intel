@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { desc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db, schema } from "@/db";
@@ -11,6 +12,7 @@ import { formatEt, relTime } from "@/lib/time";
 export const dynamic = "force-dynamic";
 
 export default async function CreatorPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { id } = await params;
   const { msg } = await searchParams;
   const [c] = await db.select().from(schema.creators).where(eq(schema.creators.id, id));

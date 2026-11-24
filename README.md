@@ -15,7 +15,7 @@ Next.js 15 (App Router, server actions) · PostgreSQL via Drizzle ORM · separat
 
 1. Create a project with a **Postgres** database.
 2. **Web service** from this repo. Uses `railway.json` (build `npm run build`, start `npm start`, which runs migrations then serves). Generate a domain.
-3. **Worker service** from the same repo. Settings > Start command: `npm run worker`. Remove the healthcheck for this service (it has no HTTP server).
+3. **Worker service** from the same repo with variable `APP_ROLE=worker`. Same `railway.json`; `npm start` switches to the worker and it serves its own `/api/health`.
 4. Variables for both services (see `.env.example`). At minimum: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `SESSION_SECRET`, `APP_PASSWORD`, `APP_URL`.
 5. Optional, all free: `YOUTUBE_API_KEY`, Twitch client id/secret, Google OAuth client (redirect URI `APP_URL/api/oauth/google/callback`; Twitch: `APP_URL/api/oauth/twitch/callback`), VAPID keys (`npm run vapid`).
 6. Open the app, go to Creators, and confirm each account is the right person. Nothing is tracked until you confirm.

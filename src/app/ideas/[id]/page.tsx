@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db, schema } from "@/db";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 const ALL_PLATFORMS = ["TikTok", "YouTube", "YouTube Shorts", "Twitch", "Instagram Reels", "X"];
 
 export default async function IdeaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { id } = await params;
   const { msg } = await searchParams;
   const [i] = await db.select().from(schema.ideas).where(eq(schema.ideas.id, id));

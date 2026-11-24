@@ -80,11 +80,12 @@ export async function spendUnits(provider: string, day: string, units: number, c
     .where(and(eq(schema.apiUsage.provider, provider), eq(schema.apiUsage.day, day)));
 }
 
-export async function addCost(provider: string, day: string, costUsd: number) {
-  await db.insert(schema.apiUsage).values({ provider, day, costUsd, requests: 1 })
+export async function addCost(provider: string, day: string, costUsd: number, countRequest = true) {
+  const inc = countRequest ? 1 : 0;
+  await db.insert(schema.apiUsage).values({ provider, day, costUsd, requests: inc })
     .onConflictDoUpdate({
       target: [schema.apiUsage.provider, schema.apiUsage.day],
-      set: { costUsd: sql`${schema.apiUsage.costUsd} + ${costUsd}`, requests: sql`${schema.apiUsage.requests} + 1` },
+      set: { costUsd: sql`${schema.apiUsage.costUsd} + ${costUsd}`, requests: sql`${schema.apiUsage.requests} + ${inc}` },
     });
 }
 
@@ -105,6 +106,10 @@ export async function cacheSet(key: string, value: unknown, ttlSeconds: number) 
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
   await db.insert(schema.cacheEntries).values({ key, value: value as object, expiresAt })
     .onConflictDoUpdate({ target: schema.cacheEntries.key, set: { value: value as object, expiresAt } });
+}
+
+export async function cacheDelete(key: string) {
+  await db.delete(schema.cacheEntries).where(eq(schema.cacheEntries.key, key));
 }
 
 export async function pruneOps() {

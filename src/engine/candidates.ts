@@ -60,6 +60,9 @@ export function buildCandidates(trends: TrendRow[], outliers: OutlierRow[], rece
 
   const cands: Candidate[] = [];
   for (const [key, group] of byCluster) {
+    // Twitch's top categories barely change day to day (Fortnite, GTA, Just Chatting are always there).
+    // On their own they're only news if the category just entered the list.
+    if (group.every((t) => t.source === "twitch_top") && now.getTime() - Math.min(...group.map((t) => t.firstSeenAt.getTime())) > 24 * 3_600_000) continue;
     group.sort((a, b) => (b.trafficNum ?? 0) - (a.trafficNum ?? 0));
     const lead = group[0];
     const evidence: Evidence[] = [];

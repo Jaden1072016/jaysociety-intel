@@ -1,4 +1,4 @@
-import { cacheGet, cacheSet, fetchWithRetry, spendUnits, ProviderNotConfigured, type FetchLike } from "@/lib/ops";
+import { cacheGet, cacheSet, cacheDelete, fetchWithRetry, HttpError, spendUnits, ProviderNotConfigured, type FetchLike } from "@/lib/ops";
 import { etDate } from "@/lib/time";
 import { getSetting } from "@/lib/settings";
 import { classifyFormat, parseTwitchDuration } from "@/analysis/performance";
@@ -34,12 +34,21 @@ export async function helix<T = any>(path: string, params: [string, string][], o
     const cap = (await getSetting("budgets")).twitchDailyRequests;
     await spendUnits("twitch_helix", etDate(), 1, cap);
   }
-  const token = opts.userToken ?? await appToken(opts);
   const qs = new URLSearchParams(params);
-  const res = await fetchWithRetry(`${HELIX}/${path}?${qs}`, {
-    headers: { "Client-Id": id, Authorization: `Bearer ${token}` },
-  }, { fetchImpl: opts.fetchImpl });
-  return res.json();
+  const call = async () => {
+    const token = opts.userToken ?? await appToken(opts);
+    return fetchWithRetry(`${HELIX}/${path}?${qs}`, { headers: { "Client-Id": id, Authorization: `Bearer ${token}` } }, { fetchImpl: opts.fetchImpl });
+  };
+  try {
+    return (await call()).json();
+  } catch (e) {
+    // App tokens can be revoked early; drop the cached one and try once with a fresh token.
+    if (!opts.userToken && e instanceof HttpError && e.status === 401) {
+      await cacheDelete("twitch_app_token");
+      return (await call()).json();
+    }
+    throw e;
+  }
 }
 
 export type TwitchUser = { id: string; login: string; displayName: string; createdAt: string; url: string };

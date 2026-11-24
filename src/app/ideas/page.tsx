@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { IDEA_STATUSES } from "@/db/schema";
@@ -9,6 +10,7 @@ import { relTime } from "@/lib/time";
 export const dynamic = "force-dynamic";
 
 export default async function Ideas({ searchParams }: { searchParams: Promise<{ msg?: string; q?: string; status?: string }> }) {
+  await requireAuth();
   const { msg, q, status } = await searchParams;
   const conds: SQL[] = [];
   if (status && (IDEA_STATUSES as readonly string[]).includes(status)) conds.push(eq(schema.ideas.status, status));

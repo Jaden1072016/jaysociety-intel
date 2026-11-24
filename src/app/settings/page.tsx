@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { desc, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSetting } from "@/lib/settings";
@@ -18,6 +19,7 @@ const LEVEL: Record<string, [string, string]> = {
 };
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  await requireAuth();
   const { msg } = await searchParams;
   const [statuses, profile, notif, ai, budgets, logs, usage, conns, jobs, subs] = await Promise.all([
     providerStatuses(), getSetting("audience_profile"), getSetting("notifications"), getSetting("ai"), getSetting("budgets"),

@@ -9,6 +9,9 @@
  * This says "this video is doing unusually well for this creator", never WHY.
  */
 
+/** Early view counts swing too much to compare fairly. */
+export const MIN_AGE_HOURS = 6;
+
 export type PeerObs = { videoId: string; format: string; ageHours: number; views: number };
 export type PerfResult = {
   ratio: number | null;
@@ -44,6 +47,9 @@ export function computePerformance(
 ): PerfResult {
   if (video.views == null || video.ageHours <= 0) {
     return { ratio: null, baseline: null, peers: 0, confidence: "none", basis: "No view count available" };
+  }
+  if (video.ageHours < MIN_AGE_HOURS) {
+    return { ratio: null, baseline: null, peers: 0, confidence: "none", basis: `Too new to compare (under ${MIN_AGE_HOURS} hours old)` };
   }
   const others = peerObservations.filter((o) => o.videoId !== video.id && o.views != null);
   const sameFormat = others.filter((o) => o.format === video.format);

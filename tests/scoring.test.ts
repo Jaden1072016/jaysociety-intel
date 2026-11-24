@@ -21,11 +21,24 @@ describe("creator performance baselines", () => {
     expect(r.basis).toMatch(/similar age/);
   });
 
-  it("does not compare a 2-hour-old video to week-old totals at face value", () => {
+  it("does not compare a young video to week-old totals at face value", () => {
     const obs = peers("long", 168, [1000, 1100, 900, 1050, 950]);
-    const r = computePerformance({ id: "x", format: "long", ageHours: 2, views: 300 }, obs);
-    expect(r.confidence).toBe("low"); // falls back to age-adjusted estimate
-    expect(r.ratio!).toBeGreaterThan(0.5); // 300 views at 2h is not "0.3x" of a week-old total
+    const r = computePerformance({ id: "x", format: "long", ageHours: 12, views: 600 }, obs);
+    expect(r.confidence).toBe("low"); // falls back to age-adjusted estimate, labeled low
+    expect(r.ratio!).toBeGreaterThan(0.5); // 600 views at 12h is not "0.6x" of a week-old total
+    expect(r.basis).toMatch(/not enough same-age history/);
+  });
+
+  it("refuses to judge videos under 6 hours old", () => {
+    const obs = peers("long", 3, [100, 100, 100, 100, 100, 100]);
+    const r = computePerformance({ id: "x", format: "long", ageHours: 3, views: 5000 }, obs);
+    expect(r).toMatchObject({ ratio: null, confidence: "none" });
+    expect(r.basis).toMatch(/Too new/);
+  });
+
+  it("never shows a low-confidence estimate as a confident claim", () => {
+    expect(perfLabel(4, "low")).toMatch(/low confidence/);
+    expect(perfLabel(4, "medium")).not.toMatch(/low confidence/);
   });
 
   it("reports no ratio without enough history", () => {

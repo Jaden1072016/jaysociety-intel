@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { freshness, freshnessLabel } from "@/analysis/freshness";
@@ -15,6 +16,7 @@ const SRC: Record<string, string> = {
 };
 
 export default async function Trends({ searchParams }: { searchParams: Promise<{ msg?: string; all?: string }> }) {
+  await requireAuth();
   const { msg, all } = await searchParams;
   const now = new Date();
   const since = new Date(now.getTime() - 72 * 3_600_000);

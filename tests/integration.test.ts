@@ -293,3 +293,94 @@ describe("notifications", () => {
     expect(n.sent).toBe(true);
   });
 });
+
+describe("production hardening", () => {
+  it("fires 8:00 AM ET on both sides of every DST switch", () => {
+    const at = (iso: string) => dueSlot({ kind: "daily", at: "08:00" }, new Date(iso));
+    // Fall back: Sun Nov 1 2026. EDT the day before (UTC-4), EST from that day (UTC-5).
+    expect(at("2026-10-31T12:00:00Z")).toBe("2026-10-31@08:00");
+    expect(at("2026-10-31T11:59:00Z")).toBeNull();
+    expect(at("2026-11-01T13:00:00Z")).toBe("2026-11-01@08:00");
+    expect(at("2026-11-01T12:00:00Z")).toBeNull(); // 7:00 AM EST, too early
+    // Spring forward: Sun Mar 14 2027.
+    expect(at("2027-03-13T13:00:00Z")).toBe("2027-03-13@08:00");
+    expect(at("2027-03-14T12:00:00Z")).toBe("2027-03-14@08:00");
+    expect(at("2027-03-14T11:59:00Z")).toBeNull();
+    // Fall back 2027: Sun Nov 7.
+    expect(at("2027-11-06T12:00:00Z")).toBe("2027-11-06@08:00");
+    expect(at("2027-11-07T13:00:00Z")).toBe("2027-11-07@08:00");
+  });
+
+  it("the repeated 1 AM hour on fall-back day runs a job only once", async () => {
+    const s = { kind: "times" as const, at: ["01:00"] };
+    const first = dueSlot(s, new Date("2026-11-01T05:10:00Z")); // 1:10 AM EDT
+    const second = dueSlot(s, new Date("2026-11-01T06:10:00Z")); // 1:10 AM EST (again)
+    expect(first).toBe(second);
+    let n = 0;
+    await runJob("creators", first!, async () => { n++; });
+    await runJob("creators", second!, async () => { n++; });
+    expect(n).toBe(1);
+  });
+
+  it("trusts only the proxy-added IP, not a spoofed header", async () => {
+    const { ipFromForwarded } = await import("@/lib/auth");
+    expect(ipFromForwarded("6.6.6.6, 203.0.113.9", null)).toBe("203.0.113.9");
+    expect(ipFromForwarded(null, "198.51.100.2")).toBe("198.51.100.2");
+  });
+
+  it("locks out globally when many IPs fail (IP rotation)", async () => {
+    const { GLOBAL_MAX_FAILURES } = await import("@/lib/auth");
+    await db.insert(schema.loginAttempts).values(Array.from({ length: GLOBAL_MAX_FAILURES }, (_, i) => ({ ip: `10.0.0.${i}`, success: false })));
+    const r = await attemptLogin("10.9.9.9", "correct horse battery staple");
+    expect(r.ok).toBe(false);
+  });
+
+  it("the AI cap holds even with simultaneous runs, and spend settles to the real cost", async () => {
+    process.env.ANTHROPIC_API_KEY = "test";
+    const { reserveSpend } = await import("@/engine/claude");
+    // Two reservations race for a cap that fits only one.
+    const results = await Promise.all([reserveSpend("2026-11", "2026-11-23", 0.6, 1), reserveSpend("2026-11", "2026-11-23", 0.6, 1)]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    await resetDb();
+
+    const cand = { topicKey: "k", topic: "t", kind: "trend" as const, evidence: [], matched: [], relevance: 1, freshness: 1, signals: { kinds: 1, items: 1, maxTraffic: null, maxOutlierRatio: null, bestConfidence: "none" as const, manualOnly: false }, saturation: 0, creators: [], formats: [], preScore: 1 };
+    const ok = { messages: { create: async () => ({ usage: { input_tokens: 1000, output_tokens: 1000 }, content: [{ type: "text", text: '{"ideas":[]}' }] }) } };
+    await claudeIdeas([cand], DEFAULT_PROFILE, { ...DEFAULT_AI, monthlyCapUsd: 2 }, ok);
+    const [u] = await db.select().from(schema.apiUsage).where(eq(schema.apiUsage.provider, "claude"));
+    expect(u.costUsd).toBeCloseTo((1000 * 0.1 + 1000 * 0.5) / 1e6, 9);
+    expect(u.requests).toBe(1);
+
+    const failing = { messages: { create: async () => { throw new Error("overloaded"); } } };
+    await claudeIdeas([cand], DEFAULT_PROFILE, { ...DEFAULT_AI, monthlyCapUsd: 2 }, failing);
+    const [u2] = await db.select().from(schema.apiUsage).where(eq(schema.apiUsage.provider, "claude"));
+    expect(u2.costUsd).toBeCloseTo(u.costUsd, 9); // failed call's reservation released
+
+    // Spend at the cap: the call never happens, rules take over.
+    await db.update(schema.apiUsage).set({ costUsd: 2 });
+    let called = false;
+    const spy = { messages: { create: async () => { called = true; return {}; } } };
+    expect(await claudeIdeas([cand], DEFAULT_PROFILE, { ...DEFAULT_AI, monthlyCapUsd: 2 }, spy)).toBeNull();
+    expect(called).toBe(false);
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("low-confidence comparisons never reach the home screen or the idea engine", async () => {
+    const [c] = await db.insert(schema.creators).values({ name: "X", slug: "x" }).returning();
+    const [a] = await db.insert(schema.creatorAccounts).values({ creatorId: c.id, platform: "youtube", handle: "@x", verified: true }).returning();
+    const now = new Date();
+    await db.insert(schema.videos).values([
+      { accountId: a.id, platform: "youtube", externalId: "low", url: "https://youtube.com/watch?v=low", title: "low", publishedAt: new Date(now.getTime() - 86400_000), perfRatio: 5, perfConfidence: "low" },
+      { accountId: a.id, platform: "youtube", externalId: "med", url: "https://youtube.com/watch?v=med", title: "med", publishedAt: new Date(now.getTime() - 86400_000), perfRatio: 2, perfConfidence: "medium" },
+    ]);
+    const outs = await recentOutliers(10, 1.5, now);
+    expect(outs.map((o) => o.title)).toEqual(["med"]);
+  });
+
+  it("evergreen Twitch categories don't become daily ideas", async () => {
+    const { buildCandidates } = await import("@/engine/candidates");
+    const now = new Date();
+    const old = { id: "f", source: "twitch_top", title: "Fortnite", url: null, approxTraffic: "#3 on Twitch", trafficNum: null, firstSeenAt: new Date(now.getTime() - 5 * 86400_000), lastSeenAt: now, relevance: 0.5, matchedTopics: ["fortnite"], clusterKey: null, news: [], supportLevel: "full" };
+    expect(buildCandidates([old], [], [], now)).toHaveLength(0);
+    expect(buildCandidates([{ ...old, firstSeenAt: new Date(now.getTime() - 3_600_000) }], [], [], now)).toHaveLength(1);
+  });
+});

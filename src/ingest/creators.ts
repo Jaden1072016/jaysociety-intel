@@ -179,7 +179,8 @@ export async function recentOutliers(days = 10, minRatio = 1.5, now = new Date()
     .innerJoin(schema.creatorAccounts, eq(schema.creatorAccounts.id, schema.videos.accountId))
     .innerJoin(schema.creators, eq(schema.creators.id, schema.creatorAccounts.creatorId))
     .where(and(gte(schema.videos.publishedAt, since), gte(schema.videos.perfRatio, minRatio), eq(schema.creators.isSelf, false),
-      inArray(schema.videos.perfConfidence, ["high", "medium", "low"])))
+      // Low-confidence estimates stay on the creator page only; they never headline or feed ideas.
+      inArray(schema.videos.perfConfidence, ["high", "medium"])))
     .orderBy(desc(schema.videos.perfRatio))
     .limit(40);
 }

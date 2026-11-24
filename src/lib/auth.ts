@@ -22,10 +22,14 @@ export async function checkPassword(input: string, env = process.env): Promise<b
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function recentFailures(ip: string, now = new Date()): Promise<number> {
+/** Failures across ALL addresses. Stops someone rotating IPs to guess the password. */
+export const GLOBAL_MAX_FAILURES = 30;
+
+export async function recentFailures(ip: string | null, now = new Date()): Promise<number> {
   const since = new Date(now.getTime() - LOCKOUT_MINUTES * 60_000);
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.loginAttempts)
-    .where(and(eq(schema.loginAttempts.ip, ip), eq(schema.loginAttempts.success, false), gte(schema.loginAttempts.createdAt, since)));
+  const conds = [eq(schema.loginAttempts.success, false), gte(schema.loginAttempts.createdAt, since)];
+  if (ip !== null) conds.push(eq(schema.loginAttempts.ip, ip));
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.loginAttempts).where(and(...conds));
   return row?.n ?? 0;
 }
 
@@ -33,7 +37,7 @@ export type LoginResult = { ok: true; token: string } | { ok: false; error: stri
 
 /** Pure-ish login flow (DB for rate limiting) so it can be tested without Next request context. */
 export async function attemptLogin(ip: string, password: string): Promise<LoginResult> {
-  if ((await recentFailures(ip)) >= MAX_FAILURES) {
+  if ((await recentFailures(ip)) >= MAX_FAILURES || (await recentFailures(null)) >= GLOBAL_MAX_FAILURES) {
     return { ok: false, error: `Too many attempts. Try again in ${LOCKOUT_MINUTES} minutes.` };
   }
   const ok = await checkPassword(password);
@@ -42,9 +46,18 @@ export async function attemptLogin(ip: string, password: string): Promise<LoginR
   return { ok: true, token: await createSessionToken() };
 }
 
+/**
+ * The client can put anything in X-Forwarded-For; Railway's edge appends the real address last.
+ * So the rightmost entry is the one we trust.
+ */
+export function ipFromForwarded(xff: string | null, realIp: string | null): string {
+  const parts = (xff ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.at(-1) ?? realIp?.trim() ?? "unknown";
+}
+
 export async function clientIp(): Promise<string> {
   const h = await headers();
-  return (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "unknown").trim();
+  return ipFromForwarded(h.get("x-forwarded-for"), h.get("x-real-ip"));
 }
 
 export async function setSessionCookie(token: string) {
