@@ -51,16 +51,16 @@ export async function helix<T = any>(path: string, params: [string, string][], o
   }
 }
 
-export type TwitchUser = { id: string; login: string; displayName: string; createdAt: string; url: string };
+export type TwitchUser = { id: string; login: string; displayName: string; createdAt: string; url: string; avatar: string | null };
 
 export function loginFromInput(input: string): string {
   return (/twitch\.tv\/([\w]+)/i.exec(input)?.[1] ?? input).replace(/^@/, "").toLowerCase().trim();
 }
 
 export async function resolveUser(input: string, opts: Opts = {}): Promise<TwitchUser | null> {
-  const r = await helix<{ id: string; login: string; display_name: string; created_at: string }>("users", [["login", loginFromInput(input)]], opts);
+  const r = await helix<{ id: string; login: string; display_name: string; created_at: string; profile_image_url?: string }>("users", [["login", loginFromInput(input)]], opts);
   const u = r.data[0];
-  return u ? { id: u.id, login: u.login, displayName: u.display_name, createdAt: u.created_at, url: `https://www.twitch.tv/${u.login}` } : null;
+  return u ? { id: u.id, login: u.login, displayName: u.display_name, createdAt: u.created_at, url: `https://www.twitch.tv/${u.login}`, avatar: u.profile_image_url ?? null } : null;
 }
 
 export type TwitchVideo = {

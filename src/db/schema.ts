@@ -43,6 +43,16 @@ export const creatorAccounts = pgTable("creator_accounts", {
   resolveError: text("resolve_error"),
   lastFetchedAt: ts("last_fetched_at"),
   uploadsPlaylist: text("uploads_playlist"),
+  avatarUrl: text("avatar_url"),
+  // Audit trail for how this account was identified
+  role: text("role"), // Main | Live/secondary | VODs | Secondary vlog | ...
+  confidence: text("confidence"), // High | Medium | Low
+  trackingDecision: text("tracking_decision"), // "YES - ID confirm" | "HOLD - verify"
+  verificationMethod: text("verification_method"),
+  evidenceUrl: text("evidence_url"),
+  caution: text("caution"),
+  checkedAt: ts("checked_at"),
+  approvedBy: text("approved_by"),
   createdAt: now("created_at"),
 }, (t) => [uniqueIndex("creator_accounts_platform_handle").on(t.platform, t.handle)]);
 

@@ -128,7 +128,7 @@ export async function resolveAccountAction(f: FormData) {
 export async function setVerified(f: FormData) {
   await requireAuth();
   const v = str(f, "verified") === "1";
-  await db.update(schema.creatorAccounts).set({ verified: v, verifiedAt: v ? new Date() : null }).where(eq(schema.creatorAccounts.id, str(f, "id")));
+  await db.update(schema.creatorAccounts).set({ verified: v, verifiedAt: v ? new Date() : null, approvedBy: v ? "owner (app)" : null, ...(v ? { trackingDecision: "Approved" } : {}) }).where(eq(schema.creatorAccounts.id, str(f, "id")));
   revalidatePath(`/creators/${str(f, "creatorId")}`);
   back(`/creators/${str(f, "creatorId")}`, v ? "Confirmed. It will be included in the next refresh." : "Marked unconfirmed. It won't be refreshed.");
 }

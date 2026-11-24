@@ -22,6 +22,13 @@
       "when": 1795487664774,
       "tag": "0002_dismiss_first_day_twitch_ideas",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795495670554,
+      "tag": "0003_account_audit",
+      "breakpoints": true
     }
   ]
 }

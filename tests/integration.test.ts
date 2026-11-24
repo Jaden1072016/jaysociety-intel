@@ -391,3 +391,33 @@ describe("production hardening", () => {
     expect(buildCandidates([fresh], [], [], now, null)).toHaveLength(0);
   });
 });
+
+describe("10-creator account fix import", () => {
+  it("updates existing creators only, confirms nothing, keeps HOLD off, preserves confirmations", async () => {
+    const { applyAccounts10 } = await import("@/jobs/watchlist");
+    const names = ["Deshae Frost", "Adin Ross", "IShowSpeed", "Jynxzi", "Marlon", "Druski", "ImDontai", "JasonTheWeen", "Rakai"]; // Kanel Joseph deliberately missing
+    for (const n of names) await db.insert(schema.creators).values({ name: n, slug: n.toLowerCase().replace(/\W+/g, "-") });
+    const [marlon] = await db.select().from(schema.creators).where(eq(schema.creators.name, "Marlon"));
+    // a pre-existing confirmed account must survive untouched
+    await db.insert(schema.creatorAccounts).values({ creatorId: marlon.id, platform: "twitch", handle: "marlon", externalId: "123", verified: true, approvedBy: "owner (app)" });
+
+    const msg = await applyAccounts10();
+    const creators = await db.select().from(schema.creators);
+    expect(creators).toHaveLength(9); // no duplicates, Kanel Joseph not created
+    expect(msg).toMatch(/creators missing \(not created\): Kanel Joseph/);
+
+    const accs = await db.select().from(schema.creatorAccounts);
+    expect(accs.filter((a) => a.verified).map((a) => a.handle)).toEqual(["marlon"]); // only the pre-existing confirmation
+    const m = accs.find((a) => a.handle === "marlon")!;
+    expect(m).toMatchObject({ externalId: "123", approvedBy: "owner (app)", role: "Primary streaming", confidence: "High" });
+    expect(accs.some((a) => a.platform === "twitch" && a.handle === "2xrakai")).toBe(true);
+    expect(accs.some((a) => a.platform === "twitch" && a.handle === "rakai")).toBe(false);
+    const holds = accs.filter((a) => a.trackingDecision?.startsWith("HOLD"));
+    expect(holds.length).toBeGreaterThan(0);
+    expect(holds.every((a) => !a.verified)).toBe(true);
+    expect(accs.every((a) => a.evidenceUrl && a.confidence)).toBe(true);
+    // main / live / VOD YouTube channels kept as separate accounts
+    const marlonYt = accs.filter((a) => a.creatorId === marlon.id && a.platform === "youtube").map((a) => a.role).sort();
+    expect(marlonYt).toEqual(["Main", "Secondary vlog", "VODs"]);
+  });
+});

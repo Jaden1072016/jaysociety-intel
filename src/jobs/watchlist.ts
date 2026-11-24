@@ -3,7 +3,7 @@
  * Runs once (job_runs dedupe). Every YouTube/Twitch account is checked against the platform
  * before it's confirmed; anything that doesn't match stays unconfirmed and is logged.
  */
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import * as yt from "@/providers/youtube";
 import * as tw from "@/providers/twitch";
@@ -268,6 +268,111 @@ export async function applyResearchList(): Promise<string> {
     }
   }
   const msg = `research list: ${added} candidates added, ${updated} core creators annotated, ${looked} Twitch lookups`;
+  out(msg);
+  return msg;
+}
+
+// ---------- Fix import for the 10 creators with no accounts (2026-11-23, "Verified Accounts (10)" sheet) ----------
+import accounts10 from "./watchlist-accounts-10.json";
+
+type Acct10 = {
+  creator: string; platform: string; handle: string; url: string; role: string; confidence: string; decision: string;
+  method: string; evidence: string; caution: string | null; checked: string; expectedId: string | null;
+};
+
+/** The platform's own name for a row's account (handle normalized for our unique key). */
+export function normalizeHandle(a: Pick<Acct10, "platform" | "handle">): string {
+  if (a.platform === "twitch" || a.platform === "kick") return a.handle.replace(/^@/, "").toLowerCase();
+  return a.handle;
+}
+
+/**
+ * Updates ONLY existing creators (never creates one). Never confirms anything: the owner approves each
+ * account in the app. Resolves stable IDs for YouTube/Twitch, saves audit evidence, then runs a real
+ * refresh so history starts accumulating (scheduled refresh still only covers confirmed accounts).
+ */
+export async function applyAccounts10(): Promise<string> {
+  const twitchUser = await accessToken("twitch").catch(() => null);
+  const tally = { updated: 0, resolved: 0, notFound: 0, idMismatch: 0, hold: 0, refreshed: 0, skippedCreators: new Set<string>() };
+  const toRefresh: { id: string; label: string }[] = [];
+
+  for (const a of accounts10 as Acct10[]) {
+    const [creator] = await db.select().from(schema.creators).where(eq(schema.creators.name, a.creator));
+    if (!creator) { tally.skippedCreators.add(a.creator); continue; } // never create duplicates
+    const handle = normalizeHandle(a);
+    const hold = a.decision.toUpperCase().startsWith("HOLD");
+    const meta = {
+      role: a.role, confidence: a.confidence, trackingDecision: a.decision, verificationMethod: a.method,
+      evidenceUrl: a.evidence, caution: a.caution, url: a.url, checkedAt: new Date(a.checked),
+    };
+    const [existing] = await db.select().from(schema.creatorAccounts)
+      .where(and(eq(schema.creatorAccounts.platform, a.platform), eq(schema.creatorAccounts.handle, handle)));
+    let id: string;
+    if (existing) {
+      // Preserve confirmations, IDs and history; only fill in audit info.
+      await db.update(schema.creatorAccounts).set({ ...meta, creatorId: creator.id }).where(eq(schema.creatorAccounts.id, existing.id));
+      id = existing.id;
+    } else {
+      const [row] = await db.insert(schema.creatorAccounts).values({ creatorId: creator.id, platform: a.platform, handle, verified: false, ...meta }).returning();
+      id = row.id;
+    }
+    tally.updated++;
+    if (hold) { tally.hold++; out(`${a.creator}: HOLD saved, not enabled: ${a.platform} ${handle}`); continue; }
+    if (a.platform !== "youtube" && a.platform !== "twitch") continue;
+
+    try {
+      if (a.platform === "youtube") {
+        const ch = await yt.resolveChannel(a.expectedId ?? handle);
+        if (!ch) {
+          tally.notFound++;
+          await db.update(schema.creatorAccounts).set({ resolveError: `Not found on YouTube: ${handle}` }).where(eq(schema.creatorAccounts.id, id));
+          out(`${a.creator}: YouTube ${handle} (${a.role}) NOT FOUND`);
+          continue;
+        }
+        const mismatch = a.expectedId && ch.id !== a.expectedId;
+        await db.update(schema.creatorAccounts).set({
+          externalId: ch.id, displayName: ch.title, followerCount: ch.subscribers, url: ch.url, uploadsPlaylist: ch.uploadsPlaylist,
+          avatarUrl: ch.avatar, resolveError: mismatch ? `Channel ID ${ch.id} differs from researched ${a.expectedId}` : null,
+        }).where(eq(schema.creatorAccounts.id, id));
+        if (mismatch) tally.idMismatch++;
+        tally.resolved++;
+        out(`${a.creator}: YouTube ${handle} (${a.role}) -> "${ch.title}" ${ch.id} subs=${ch.subscribers ?? "hidden"} ${ch.url}${mismatch ? " ID MISMATCH" : ""}`);
+        toRefresh.push({ id, label: `${a.creator} YouTube "${ch.title}" (${a.role})` });
+      } else {
+        const u = await tw.resolveUser(handle);
+        if (!u) {
+          tally.notFound++;
+          await db.update(schema.creatorAccounts).set({ resolveError: `No Twitch user "${handle}"` }).where(eq(schema.creatorAccounts.id, id));
+          out(`${a.creator}: Twitch ${handle} NOT FOUND`);
+          continue;
+        }
+        const followers = twitchUser ? await tw.followerTotal(u.id, twitchUser).catch(() => null) : null;
+        await db.update(schema.creatorAccounts).set({
+          externalId: u.id, displayName: u.displayName, followerCount: followers, url: u.url, avatarUrl: u.avatar, resolveError: null,
+        }).where(eq(schema.creatorAccounts.id, id));
+        tally.resolved++;
+        out(`${a.creator}: Twitch ${handle} (${a.role}) -> "${u.displayName}" id=${u.id} followers=${followers ?? "?"} ${u.url}`);
+        toRefresh.push({ id, label: `${a.creator} Twitch "${u.displayName}"` });
+      }
+    } catch (e) {
+      out(`${a.creator}: ${a.platform} ${handle} lookup error ${(e as Error).message.slice(0, 150)}`);
+    }
+  }
+
+  // Real refresh test: pulls recent videos so history starts now. Does not confirm/track anything.
+  for (const r of toRefresh) {
+    try {
+      const res = await refreshAccount(r.id, { max: 20 });
+      const [latest] = await db.select({ title: schema.videos.title, views: schema.videos.latestViews, at: schema.videos.publishedAt })
+        .from(schema.videos).where(eq(schema.videos.accountId, r.id)).orderBy(desc(schema.videos.publishedAt)).limit(1);
+      tally.refreshed++;
+      out(`REFRESH OK ${r.label}: ${res.stored} videos${latest ? `; newest ${latest.at.toISOString().slice(0, 10)} "${latest.title.slice(0, 60)}" views=${latest.views}` : ""}`);
+    } catch (e) {
+      out(`REFRESH FAILED ${r.label}: ${(e as Error).message.slice(0, 150)}`);
+    }
+  }
+  const skipped = [...tally.skippedCreators];
+  const msg = `accounts10: ${tally.updated} saved, ${tally.resolved} resolved, ${tally.notFound} not found, ${tally.idMismatch} ID mismatches, ${tally.hold} on hold, ${tally.refreshed}/${toRefresh.length} returned data${skipped.length ? `; creators missing (not created): ${skipped.join(", ")}` : ""}`;
   out(msg);
   return msg;
 }

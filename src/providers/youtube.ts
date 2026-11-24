@@ -7,7 +7,7 @@ const BASE = "https://www.googleapis.com/youtube/v3";
 
 export type YtChannel = {
   id: string; title: string; handle: string | null; subscribers: number | null;
-  uploadsPlaylist: string | null; createdAt: string | null; url: string;
+  uploadsPlaylist: string | null; createdAt: string | null; url: string; avatar: string | null;
 };
 
 export type YtVideo = {
@@ -52,6 +52,7 @@ export function parseChannel(item: Record<string, any>): YtChannel {
     uploadsPlaylist: item.contentDetails?.relatedPlaylists?.uploads ?? null,
     createdAt: item.snippet?.publishedAt ?? null,
     url: handle ? `https://www.youtube.com/${handle}` : `https://www.youtube.com/channel/${item.id}`,
+    avatar: item.snippet?.thumbnails?.default?.url ?? null,
   };
 }
 

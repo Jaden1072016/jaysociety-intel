@@ -33,15 +33,32 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
         {accs.map((a) => (
           <div key={a.id} className="card">
             <div className="row between">
+              <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
+              {a.avatarUrl && <img src={a.avatarUrl} alt="" width={40} height={40} style={{ borderRadius: "50%", flex: "none" }} referrerPolicy="no-referrer" />}
               <div className="stack">
                 <strong>{a.platform}: {a.handle}</strong>
+                <div className="row">
+                  {a.role && <span className="badge navy">{a.role}</span>}
+                  {a.confidence && <span className={`badge ${a.confidence === "High" ? "good" : "warn"}`}>{a.confidence} confidence</span>}
+                  {a.trackingDecision?.toUpperCase().startsWith("HOLD") && <span className="badge bad">HOLD, verify first</span>}
+                </div>
                 {a.displayName ? (
                   <span className="muted" style={{ fontSize: "0.85rem" }}>
                     Platform says: <a href={a.url ?? "#"} target="_blank" rel="noopener noreferrer">{a.displayName}</a>
                     {a.followerCount != null && ` · ${a.followerCount.toLocaleString()} ${a.platform === "youtube" ? "subscribers" : "followers"}`}
                     {a.externalId && <span className="faint"> · id {a.externalId}</span>}
                   </span>
-                ) : a.resolveError ? <span style={{ color: "var(--warn)", fontSize: "0.85rem" }}>{a.resolveError}</span> : <span className="faint">Not looked up yet</span>}
+                ) : a.resolveError ? <span style={{ color: "var(--warn)", fontSize: "0.85rem" }}>{a.resolveError}</span> : <span className="faint">{["youtube", "twitch"].includes(a.platform) ? "Not looked up yet" : <a href={a.url ?? "#"} target="_blank" rel="noopener noreferrer">{a.url}</a>}</span>}
+                {a.displayName && a.resolveError && <span style={{ color: "var(--warn)", fontSize: "0.8rem" }}>{a.resolveError}</span>}
+                {(a.evidenceUrl || a.verificationMethod) && (
+                  <span className="faint" style={{ fontSize: "0.75rem" }}>
+                    Evidence: {a.verificationMethod ?? "source"}{a.evidenceUrl && <> · <a href={a.evidenceUrl} target="_blank" rel="noopener noreferrer">link</a></>}
+                    {a.checkedAt && ` · checked ${a.checkedAt.toISOString().slice(0, 10)}`}
+                    {a.approvedBy && ` · approved by ${a.approvedBy}`}
+                  </span>
+                )}
+                {a.caution && <span className="faint" style={{ fontSize: "0.75rem" }}>Note: {a.caution}</span>}
+              </div>
               </div>
               {a.verified ? <span className="badge good">Confirmed</span> : <span className="badge warn">Unconfirmed</span>}
             </div>

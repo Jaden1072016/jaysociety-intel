@@ -27,7 +27,7 @@ export async function resolveAccount(accountId: string, opts: Opts = {}) {
       if (!ch) return setResolveError(accountId, `No YouTube channel found for "${acc.handle}"`);
       await db.update(schema.creatorAccounts).set({
         externalId: ch.id, displayName: ch.title, followerCount: ch.subscribers, url: ch.url,
-        uploadsPlaylist: ch.uploadsPlaylist, resolveError: null,
+        uploadsPlaylist: ch.uploadsPlaylist, avatarUrl: ch.avatar, checkedAt: new Date(), resolveError: null,
       }).where(eq(schema.creatorAccounts.id, accountId));
       await recordSuccess("youtube_data");
       return ch;
@@ -36,7 +36,7 @@ export async function resolveAccount(accountId: string, opts: Opts = {}) {
       const u = await tw.resolveUser(acc.handle, opts);
       if (!u) return setResolveError(accountId, `No Twitch user "${acc.handle}"`);
       await db.update(schema.creatorAccounts).set({
-        externalId: u.id, displayName: u.displayName, url: u.url, resolveError: null,
+        externalId: u.id, displayName: u.displayName, url: u.url, avatarUrl: u.avatar, checkedAt: new Date(), resolveError: null,
       }).where(eq(schema.creatorAccounts.id, accountId));
       await recordSuccess("twitch_helix");
       return u;
