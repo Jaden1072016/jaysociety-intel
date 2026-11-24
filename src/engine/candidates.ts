@@ -51,7 +51,7 @@ const RANK_CONF = ["none", "low", "medium", "high"] as const;
  * to a trend cluster when their titles overlap (cross-source agreement = stronger evidence),
  * otherwise they become their own candidate. Pure function: easy to test.
  */
-export function buildCandidates(trends: TrendRow[], outliers: OutlierRow[], recentCreatorTitles: { creator: string; title: string }[], now = new Date()): Candidate[] {
+export function buildCandidates(trends: TrendRow[], outliers: OutlierRow[], recentCreatorTitles: { creator: string; title: string }[], now = new Date(), twitchTrackingSince: Date | null = null): Candidate[] {
   const byCluster = new Map<string, TrendRow[]>();
   for (const t of trends) {
     const k = t.clusterKey ?? normalizeKey(t.title);
@@ -62,7 +62,13 @@ export function buildCandidates(trends: TrendRow[], outliers: OutlierRow[], rece
   for (const [key, group] of byCluster) {
     // Twitch's top categories barely change day to day (Fortnite, GTA, Just Chatting are always there).
     // On their own they're only news if the category just entered the list.
-    if (group.every((t) => t.source === "twitch_top") && now.getTime() - Math.min(...group.map((t) => t.firstSeenAt.getTime())) > 24 * 3_600_000) continue;
+    // It only counts as "just entered" if we were already tracking the list before it appeared
+    // (on a fresh database every category looks new).
+    if (group.every((t) => t.source === "twitch_top")) {
+      const first = Math.min(...group.map((t) => t.firstSeenAt.getTime()));
+      const trackedBefore = twitchTrackingSince != null && first - twitchTrackingSince.getTime() > 3_600_000;
+      if (!trackedBefore || now.getTime() - first > 24 * 3_600_000) continue;
+    }
     group.sort((a, b) => (b.trafficNum ?? 0) - (a.trafficNum ?? 0));
     const lead = group[0];
     const evidence: Evidence[] = [];

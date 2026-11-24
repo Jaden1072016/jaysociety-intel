@@ -380,7 +380,11 @@ describe("production hardening", () => {
     const { buildCandidates } = await import("@/engine/candidates");
     const now = new Date();
     const old = { id: "f", source: "twitch_top", title: "Fortnite", url: null, approxTraffic: "#3 on Twitch", trafficNum: null, firstSeenAt: new Date(now.getTime() - 5 * 86400_000), lastSeenAt: now, relevance: 0.5, matchedTopics: ["fortnite"], clusterKey: null, news: [], supportLevel: "full" };
-    expect(buildCandidates([old], [], [], now)).toHaveLength(0);
-    expect(buildCandidates([{ ...old, firstSeenAt: new Date(now.getTime() - 3_600_000) }], [], [], now)).toHaveLength(1);
+    const fresh = { ...old, firstSeenAt: new Date(now.getTime() - 3_600_000) };
+    const trackingSince = new Date(now.getTime() - 10 * 86400_000);
+    expect(buildCandidates([old], [], [], now, trackingSince)).toHaveLength(0); // on the list for days
+    expect(buildCandidates([fresh], [], [], now, trackingSince)).toHaveLength(1); // newly entered
+    expect(buildCandidates([fresh], [], [], now, new Date(fresh.firstSeenAt))).toHaveLength(0); // fresh DB: everything looks new
+    expect(buildCandidates([fresh], [], [], now, null)).toHaveLength(0);
   });
 });

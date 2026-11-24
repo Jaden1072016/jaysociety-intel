@@ -15,6 +15,13 @@
       "when": 1795483069309,
       "tag": "0001_dismiss_pre_fix_test_ideas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795487664774,
+      "tag": "0002_dismiss_first_day_twitch_ideas",
+      "breakpoints": true
     }
   ]
 }

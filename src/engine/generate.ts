@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSetting } from "@/lib/settings";
 import { createId } from "@/lib/id";
@@ -40,7 +40,9 @@ export async function gatherCandidates(now = new Date()): Promise<Candidate[]> {
     .innerJoin(schema.creatorAccounts, eq(schema.creatorAccounts.id, schema.videos.accountId))
     .innerJoin(schema.creators, eq(schema.creators.id, schema.creatorAccounts.creatorId))
     .where(and(gte(schema.videos.publishedAt, since), eq(schema.creators.isSelf, false)));
-  const cands = buildCandidates(trends.map((t) => ({ ...t, news: t.news ?? [] })), outliers, recentTitles, now);
+  const [tw] = await db.select({ since: sql<Date | null>`min(${schema.trends.firstSeenAt})` }).from(schema.trends).where(eq(schema.trends.source, "twitch_top"));
+  const twitchSince = tw?.since ? new Date(tw.since) : null;
+  const cands = buildCandidates(trends.map((t) => ({ ...t, news: t.news ?? [] })), outliers, recentTitles, now, twitchSince);
   const fmts = formatCandidates(await formatPatterns(now));
   return [...cands, ...fmts].sort((a, b) => b.preScore - a.preScore);
 }
