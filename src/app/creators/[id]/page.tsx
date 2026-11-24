@@ -26,6 +26,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       <Header title={c.name} sub={c.isSelf ? "You" : `Priority ${c.priority}`} />
       <Flash msg={msg} />
       {c.disambiguation && <p className="muted">{c.disambiguation}</p>}
+      {c.notes && <div className="card"><h3>Research notes{c.tags.length ? ` · ${c.tags.join(", ")}` : ""}</h3>{c.notes.split("\n").map((l) => <p key={l} style={{ fontSize: "0.88rem" }}>{l}</p>)}</div>}
 
       <section className="section">
         <h2>Accounts</h2>

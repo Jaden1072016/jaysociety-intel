@@ -208,3 +208,66 @@ export async function applyWatchlist(): Promise<string> {
   out(`DONE ${msg}`);
   return msg;
 }
+
+// ---------- Research workbook import (2026-11-23, "Jay_Society_Creator_Research_Watchlist.xlsx") ----------
+import research from "./watchlist-research.json";
+
+type ResearchRow = { name: string; cohort: string; priority: number; url: string | null; estimate: string | null; format: string | null; learn: string | null; adapt: string | null; caution: string | null };
+
+export function parseEstimate(s: string | null): number | null {
+  const m = /([\d.]+)\s*([KM])/i.exec(s ?? "");
+  if (!m) return null;
+  return Math.round(Number(m[1]) * (m[2].toUpperCase() === "M" ? 1e6 : 1e3));
+}
+
+export function researchNotes(r: ResearchRow): string {
+  return [
+    r.format && `Format: ${r.format}`,
+    r.learn && `Learn: ${r.learn}`,
+    r.adapt && `Jay Society version: ${r.adapt}`,
+    r.caution && `Caution: ${r.caution}`,
+  ].filter(Boolean).join("\n");
+}
+
+/** Adds new names as CANDIDATES only (never confirmed here), and attaches research notes to everyone. */
+export async function applyResearchList(): Promise<string> {
+  const twitchUser = await accessToken("twitch").catch(() => null);
+  let added = 0, updated = 0, looked = 0;
+  for (const r of research as ResearchRow[]) {
+    const [existing] = await db.select().from(schema.creators).where(eq(schema.creators.name, r.name));
+    const notes = researchNotes(r);
+    const tags = [r.cohort];
+    let cid: string;
+    if (existing) {
+      await db.update(schema.creators).set({ notes, tags }).where(eq(schema.creators.id, existing.id));
+      cid = existing.id; updated++;
+      continue; // core creators already have confirmed accounts
+    }
+    const [n] = await db.insert(schema.creators).values({
+      name: r.name, slug: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), priority: r.priority, notes, tags,
+      disambiguation: r.caution ?? null,
+    }).onConflictDoNothing().returning();
+    if (!n) continue;
+    cid = n.id; added++;
+    if (!r.url) { out(`${r.name} (${r.cohort}, P${r.priority}): added, no handle yet`); continue; }
+    const platform = /twitch\.tv/.test(r.url) ? "twitch" : /kick\.com/.test(r.url) ? "kick" : "web";
+    const handle = r.url.replace(/\/+$/, "").split("/").pop()!;
+    const [acc] = await db.insert(schema.creatorAccounts).values({ creatorId: cid, platform, handle, url: r.url }).onConflictDoNothing().returning();
+    if (!acc || platform !== "twitch") { out(`${r.name}: added ${platform} ${handle} as a reference link`); continue; }
+    try {
+      const u = await tw.resolveUser(handle);
+      if (!u) { await db.update(schema.creatorAccounts).set({ resolveError: `No Twitch user "${handle}"` }).where(eq(schema.creatorAccounts.id, acc.id)); out(`${r.name}: twitch ${handle} NOT FOUND`); continue; }
+      const followers = twitchUser ? await tw.followerTotal(u.id, twitchUser).catch(() => null) : null;
+      await db.update(schema.creatorAccounts).set({ externalId: u.id, displayName: u.displayName, followerCount: followers, url: u.url }).where(eq(schema.creatorAccounts.id, acc.id));
+      looked++;
+      const est = parseEstimate(r.estimate);
+      const m = countMatches(followers, est ?? undefined);
+      out(`${r.name} (${r.cohort}, P${r.priority}): twitch "${u.displayName}" followers=${followers ?? "?"} vs prior estimate ${r.estimate ?? "none"} -> ${m === true ? "consistent" : m === false ? "DIFFERENT, check" : "no estimate"} (left unconfirmed)`);
+    } catch (e) {
+      out(`${r.name}: twitch ${handle} lookup error ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
+  const msg = `research list: ${added} candidates added, ${updated} core creators annotated, ${looked} Twitch lookups`;
+  out(msg);
+  return msg;
+}

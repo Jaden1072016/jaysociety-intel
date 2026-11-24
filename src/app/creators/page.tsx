@@ -32,6 +32,8 @@ export default async function Creators({ searchParams }: { searchParams: Promise
               <div className="row between">
                 <h3>{c.name}{!c.active && <span className="faint"> (paused)</span>}</h3>
                 <div className="row">
+                  {c.tags.map((t) => <span key={t} className="badge navy">{t}</span>)}
+                  {confirmed === 0 && accs.length > 0 && <span className="badge">candidate</span>}
                   {confirmed > 0 && <span className="badge good">{confirmed} confirmed</span>}
                   {needs > 0 && <span className="badge warn">{needs} to confirm</span>}
                   {accs.length === 0 && <span className="badge warn">no accounts</span>}
