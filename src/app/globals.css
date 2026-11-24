@@ -76,7 +76,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 input, select, textarea { font: inherit; font-size: 16px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; width: 100%; }
 textarea { min-height: 90px; resize: vertical; }
 label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
-form.inline { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+form.inline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 form.inline > * { flex: 1 1 140px; }
 form.inline > button { flex: 0 0 auto; }
 

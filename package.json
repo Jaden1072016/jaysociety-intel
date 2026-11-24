@@ -14,7 +14,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.dev.json",
     "vapid": "web-push generate-vapid-keys"
   },
   "dependencies": {
