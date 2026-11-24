@@ -416,3 +416,28 @@ export async function applyOwnerFixes(): Promise<string> {
   notes.forEach((n) => out(n));
   return notes.join("; ");
 }
+
+/** Owner confirmed Duke Dennis LIVE (handle has a trailing period) on 2026-11-24 00:04 ET. */
+export async function applyDukeLive(): Promise<string> {
+  const notes: string[] = [];
+  await db.delete(schema.creatorAccounts).where(and(eq(schema.creatorAccounts.platform, "youtube"), eq(schema.creatorAccounts.handle, "@DukeDennisLive")));
+  const [duke] = await db.select().from(schema.creators).where(eq(schema.creators.name, "Duke Dennis"));
+  if (!duke) return "Duke Dennis creator not found";
+  const ch = await yt.resolveChannel("@DukeDennisLive.");
+  if (!ch) return "@DukeDennisLive. not found on YouTube";
+  const ok = countMatches(ch.subscribers, 1_550_000);
+  const [acc] = await db.insert(schema.creatorAccounts).values({
+    creatorId: duke.id, platform: "youtube", handle: "@DukeDennisLive.", url: ch.url, externalId: ch.id, displayName: ch.title,
+    followerCount: ch.subscribers, uploadsPlaylist: ch.uploadsPlaylist, avatarUrl: ch.avatar,
+    role: "Live/secondary", confidence: "High", trackingDecision: "Approved",
+    verificationMethod: "Owner checked channel page (verified, 1.55M subs, links Twitch: Duke)", evidenceUrl: "https://www.youtube.com/@DukeDennisLive.",
+    checkedAt: new Date(), verified: ok === true, verifiedAt: ok === true ? new Date() : null, approvedBy: ok === true ? "owner (screenshot, 2026-11-24)" : null,
+  }).onConflictDoNothing().returning();
+  notes.push(`"${ch.title}" ${ch.id} subs=${ch.subscribers} ${ok ? "matches 1.55M, approved" : "DIFFERS from 1.55M, left unconfirmed"}`);
+  if (acc && ok) {
+    try { const r = await refreshAccount(acc.id, { max: 20 }); notes.push(`refresh: ${r.stored} videos`); }
+    catch (e) { notes.push(`refresh failed: ${(e as Error).message.slice(0, 120)}`); }
+  }
+  notes.forEach((n) => out(`Duke Dennis LIVE: ${n}`));
+  return notes.join("; ");
+}
