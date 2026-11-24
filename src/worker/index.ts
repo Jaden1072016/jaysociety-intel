@@ -8,7 +8,7 @@ import http from "node:http";
 import { closeDb, runMigrations } from "@/db";
 import { seedIfEmpty } from "@/db/seed";
 import { tick, runJob } from "@/jobs";
-import { applyWatchlist, applyResearchList, applyAccounts10, applyOwnerFixes, applyDukeLive } from "@/jobs/watchlist";
+import { applyWatchlist, applyResearchList, applyAccounts10, applyOwnerFixes, applyDukeLive, applyApproveAll } from "@/jobs/watchlist";
 import { runSelfTest } from "./selftest";
 
 let stopping = false;
@@ -37,6 +37,7 @@ async function main() {
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-23-accounts10", applyAccounts10)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-23-owner-fixes", applyOwnerFixes)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-duke-live", applyDukeLive)}`);
+  console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-approve-all", applyApproveAll)}`);
   let selfTestDone = process.env.RUN_SELFTEST !== "1";
   while (!stopping) {
     const started = Date.now();

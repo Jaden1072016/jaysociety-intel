@@ -8,7 +8,7 @@ import { db, schema } from "@/db";
 import * as yt from "@/providers/youtube";
 import * as tw from "@/providers/twitch";
 import { accessToken } from "@/providers/oauth";
-import { refreshAccount } from "@/ingest/creators";
+import { refreshAccount, refreshAllCreators } from "@/ingest/creators";
 
 type Role = "main" | "secondary" | "reference";
 type Entry = { platform: string; handle: string; url?: string; expectedId?: string; expected?: number; role: Role };
@@ -440,4 +440,33 @@ export async function applyDukeLive(): Promise<string> {
   }
   notes.forEach((n) => out(`Duke Dennis LIVE: ${n}`));
   return notes.join("; ");
+}
+
+/** Owner reviewed every creator and said "approve all of those" (2026-11-24 00:14 ET). */
+export async function applyApproveAll(): Promise<string> {
+  const pending = await db.select({
+    id: schema.creatorAccounts.id, platform: schema.creatorAccounts.platform, handle: schema.creatorAccounts.handle,
+    displayName: schema.creatorAccounts.displayName, followers: schema.creatorAccounts.followerCount,
+    decision: schema.creatorAccounts.trackingDecision, error: schema.creatorAccounts.resolveError, externalId: schema.creatorAccounts.externalId,
+    creator: schema.creators.name, isSelf: schema.creators.isSelf,
+  }).from(schema.creatorAccounts).innerJoin(schema.creators, eq(schema.creators.id, schema.creatorAccounts.creatorId))
+    .where(eq(schema.creatorAccounts.verified, false));
+  let approved = 0;
+  for (const a of pending) {
+    const eligible = ["youtube", "twitch"].includes(a.platform) && a.externalId && !a.error && !(a.decision ?? "").toUpperCase().startsWith("HOLD");
+    if (!eligible) {
+      if (["youtube", "twitch"].includes(a.platform)) out(`not approved: ${a.creator} ${a.platform} ${a.handle} (${a.error ?? (a.decision?.startsWith("HOLD") ? "HOLD" : "not resolved")})`);
+      continue;
+    }
+    await db.update(schema.creatorAccounts).set({ verified: true, verifiedAt: new Date(), approvedBy: "owner (chat: approve all, 2026-11-24)", trackingDecision: "Approved" })
+      .where(eq(schema.creatorAccounts.id, a.id));
+    approved++;
+    out(`approved: ${a.creator} ${a.platform} ${a.handle} "${a.displayName}" ${a.followers ?? "?"}`);
+  }
+  const results = await refreshAllCreators();
+  const ok = results.filter((r) => r.ok).length;
+  for (const r of results.filter((x) => !x.ok)) out(`refresh problem: ${r.handle}: ${r.msg}`);
+  const msg = `approved ${approved}; full refresh ${ok}/${results.length} accounts returned data`;
+  out(msg);
+  return msg;
 }
