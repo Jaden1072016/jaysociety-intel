@@ -174,3 +174,16 @@ describe("candidates and generators", () => {
     expect(system).toMatch(/ONLY facts present in the evidence/);
   });
 });
+
+describe("watchlist import checks", () => {
+  it("only accepts counts within 40% of the researched number", async () => {
+    const { countMatches, WATCHLIST } = await import("@/jobs/watchlist");
+    expect(countMatches(1_000_000, 1_040_000)).toBe(true);
+    expect(countMatches(291, 1_040_000)).toBe(false); // the wrong "LacY" channel
+    expect(countMatches(null, 1_000)).toBeNull();
+    // exactly one main YouTube and one main Twitch per creator
+    for (const [name, spec] of Object.entries(WATCHLIST)) {
+      for (const p of ["youtube", "twitch"]) expect(spec.entries.filter((e) => e.platform === p && e.role === "main").length, `${name} ${p}`).toBe(1);
+    }
+  });
+});

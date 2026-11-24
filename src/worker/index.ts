@@ -7,7 +7,8 @@
 import http from "node:http";
 import { closeDb, runMigrations } from "@/db";
 import { seedIfEmpty } from "@/db/seed";
-import { tick } from "@/jobs";
+import { tick, runJob } from "@/jobs";
+import { applyWatchlist } from "@/jobs/watchlist";
 import { runSelfTest } from "./selftest";
 
 let stopping = false;
@@ -30,6 +31,8 @@ async function main() {
   await runMigrations();
   await seedIfEmpty();
   console.log("[worker] started; schedules in America/New_York");
+  // One-time watchlist import; job_runs makes sure it only ever runs once.
+  console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-23", applyWatchlist)}`);
   let selfTestDone = process.env.RUN_SELFTEST !== "1";
   while (!stopping) {
     const started = Date.now();
