@@ -376,3 +376,43 @@ export async function applyAccounts10(): Promise<string> {
   out(msg);
   return msg;
 }
+
+/** Owner-checked corrections from screenshots (2026-11-23 23:55 ET). */
+export async function applyOwnerFixes(): Promise<string> {
+  const notes: string[] = [];
+  const del = async (platform: string, handle: string, why: string) => {
+    const r = await db.delete(schema.creatorAccounts).where(and(eq(schema.creatorAccounts.platform, platform), eq(schema.creatorAccounts.handle, handle))).returning();
+    if (r.length) notes.push(`removed ${platform} ${handle} (${why})`);
+  };
+  await del("youtube", "@ImDontaiGaming", "7 subs, no uploads; owner confirmed ImStillDontai is the real channel");
+  await del("youtube", "@2xrakailive", "2.9K subs, inactive; owner found the real channel @RakaiLive");
+
+  const [rakai] = await db.select().from(schema.creators).where(eq(schema.creators.name, "Rakai"));
+  if (rakai) {
+    const [acc] = await db.insert(schema.creatorAccounts).values({
+      creatorId: rakai.id, platform: "youtube", handle: "@RakaiLive", url: "https://www.youtube.com/@RakaiLive",
+      role: "Main live videos", confidence: "High", trackingDecision: "YES - ID confirm",
+      verificationMethod: "Owner checked channel page (1.4M subs, links Twitch)", evidenceUrl: "https://www.youtube.com/@RakaiLive", checkedAt: new Date(),
+    }).onConflictDoNothing().returning();
+    if (acc) {
+      const ch = await yt.resolveChannel("@RakaiLive");
+      if (ch) {
+        await db.update(schema.creatorAccounts).set({ externalId: ch.id, displayName: ch.title, followerCount: ch.subscribers, url: ch.url, uploadsPlaylist: ch.uploadsPlaylist, avatarUrl: ch.avatar })
+          .where(eq(schema.creatorAccounts.id, acc.id));
+        const ok = countMatches(ch.subscribers, 1_400_000);
+        notes.push(`added youtube @RakaiLive -> "${ch.title}" ${ch.id} subs=${ch.subscribers} (${ok ? "matches ~1.4M" : "DIFFERS from ~1.4M"})`);
+        try {
+          const r = await refreshAccount(acc.id, { max: 20 });
+          notes.push(`refresh @RakaiLive: ${r.stored} videos`);
+        } catch (e) { notes.push(`refresh @RakaiLive failed: ${(e as Error).message.slice(0, 120)}`); }
+      } else notes.push("youtube @RakaiLive not found");
+    }
+  }
+  // Record the owner's checks as evidence (still not confirmed until approved in the app).
+  for (const [p, h, ev] of [["youtube", "UClylk2CQZtH7bSOuNJ66k4A", "Owner checked: verified ImStillDontai, 3.04M subs"], ["twitch", "kaneljoseph", "Owner checked: verified KanelJoseph, 878K followers; no saved VODs, clips only"]]) {
+    await db.update(schema.creatorAccounts).set({ verificationMethod: ev, checkedAt: new Date() })
+      .where(and(eq(schema.creatorAccounts.platform, p), eq(schema.creatorAccounts.handle, h)));
+  }
+  notes.forEach((n) => out(n));
+  return notes.join("; ");
+}
