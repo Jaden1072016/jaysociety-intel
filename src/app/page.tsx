@@ -52,7 +52,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         {timing.own.basis === "own" && <p><strong>Your data:</strong> {timing.own.headline}</p>}
         <ul className="clean">
           {timing.creators.map((r) => (
-            <li key={r.kind}>{KIND_LABEL[r.kind]}: {r.pick ? <><strong>{r.pick.block} ET</strong> <span className={`badge ${r.pick.confidence === "usable" ? "good" : "warn"}`}>{r.pick.confidence}</span></> : <span className="faint">not enough data yet</span>}</li>
+            <li key={r.kind}>{KIND_LABEL[r.kind]}: {r.pick ? <><strong>{r.pick.block}{r.pick.tiedWith.length ? ` or ${r.pick.tiedWith.join(", ")}` : ""} ET</strong>{r.avoid.length ? <span className="faint"> · avoid {r.avoid.join(", ")}</span> : null} <span className={`badge ${r.pick.confidence === "usable" ? "good" : "warn"}`}>{r.pick.confidence}</span></> : <span className="faint">not enough data yet</span>}</li>
           ))}
         </ul>
         <p className="notice">{timing.own.basis === "own" ? "Your own results take priority." : "From patterns across the creators you watch until your own posts build up. A starting point to test."}</p>

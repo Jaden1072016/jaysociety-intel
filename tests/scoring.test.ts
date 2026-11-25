@@ -201,6 +201,7 @@ describe("cross-creator timing patterns", () => {
     expect(r.creators).toBe(5);
     expect(r.pick!.block).toBe("6–9 PM"); // 4 creators beat 1 prolific creator
     expect(r.pick!.reason).toMatch(/1.4x their own usual/);
+    expect(r.pick!.tiedWith).toEqual([]);
     const noon = r.blocks.find((b) => b.block === "11 AM–3 PM")!;
     expect(noon.medianRatio).toBeNull(); // 40 posts but only 1 creator: not enough to claim anything
     expect(kindOf({ platform: "youtube", format: "short" })).toBe("shorts");

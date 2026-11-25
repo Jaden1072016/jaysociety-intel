@@ -23,8 +23,9 @@ export default async function Timing() {
           </div>
           {r.pick ? (
             <>
-              <p style={{ fontSize: "1.15rem" }}><strong>Start with {r.pick.block}</strong>{r.topDays.length ? ` · busiest days ${r.topDays.map((d) => d.day).join(", ")}` : ""}</p>
+              <p style={{ fontSize: "1.15rem" }}><strong>Start with {r.pick.block}{r.pick.tiedWith.length ? ` (or ${r.pick.tiedWith.join(", ")})` : ""}</strong>{r.topDays.length ? ` · busiest days ${r.topDays.map((d) => d.day).join(", ")}` : ""}</p>
               <p className="muted" style={{ fontSize: "0.88rem" }}>{r.pick.reason}</p>
+              {r.avoid.length > 0 && <p style={{ fontSize: "0.88rem" }}><strong>Avoid:</strong> {r.avoid.join(", ")} (clearly below creators' usual)</p>}
             </>
           ) : <p className="muted">{r.note}</p>}
           <div className="scroll-x"><table>

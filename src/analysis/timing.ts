@@ -38,7 +38,8 @@ export type TimingResult = {
   kind: Kind; posts: number; creators: number;
   blocks: BlockStat[];
   topDays: { day: string; share: number }[];
-  pick: { block: string; reason: string; confidence: "provisional" | "usable" } | null;
+  pick: { block: string; reason: string; confidence: "provisional" | "usable"; tiedWith: string[] } | null;
+  avoid: string[];
   note: string;
 };
 
@@ -88,19 +89,26 @@ export function analyzeTiming(all: TimingPost[], kind: Kind): TimingResult {
   let pick: TimingResult["pick"] = null;
   if (measured.length && measured[0].medianRatio! >= 1) {
     const m = measured[0];
+    // Windows within 10% of the leader are a tie: the data can't separate them.
+    const tied = measured.slice(1).filter((b) => m.medianRatio! - b.medianRatio! < 0.1).map((b) => b.block);
     pick = {
-      block: m.block, confidence: m.ratedPosts >= 25 ? "usable" : "provisional",
-      reason: `${m.creators} creators post here and these posts ran ${m.medianRatio}x their own usual (median of ${m.ratedPosts} posts from ${m.ratedCreators} creators).`,
+      block: m.block, tiedWith: tied, confidence: m.ratedPosts >= 25 && !tied.length ? "usable" : "provisional",
+      reason: `${m.creators} creators post here and these posts ran ${m.medianRatio}x their own usual (median of ${m.ratedPosts} posts from ${m.ratedCreators} creators).`
+        + (tied.length ? ` Roughly tied with ${tied.join(", ")}: the difference is too small to call a winner.` : ""),
     };
   } else if (busy.length) {
     const c = [...busy].sort((a, b) => b.creatorShare - a.creatorShare)[0];
     pick = {
-      block: c.block, confidence: "provisional",
+      block: c.block, confidence: "provisional", tiedWith: [],
       reason: `Most common window (${c.creatorShare}% of creator activity, ${c.creators} creators). Not enough rated posts yet to say it performs better.`,
     };
   }
+  // Clear underperformers: measured, at least 20% below creators' usual.
+  const avoid = blocks.filter((b) => b.medianRatio != null && b.medianRatio < 0.8).map((b) => b.block);
   return {
-    kind, posts: posts.length, creators: creators.length, blocks, topDays, pick,
-    note: creators.length < 3 ? "Fewer than 3 creators with enough posts of this type yet." : "Pattern across creators you watch, weighted toward mid-size and emerging. A starting point to test, not proof.",
+    kind, posts: posts.length, creators: creators.length, blocks, topDays, pick, avoid,
+    note: creators.length < 3 ? "Fewer than 3 creators with enough posts of this type yet."
+      : (kind === "go_live" ? "Twitch only exposes replay (VOD) views, not live viewers, so this measures how streams perform afterward. " : "")
+        + "Pattern across creators you watch, weighted toward mid-size and emerging. A starting point to test, not proof.",
   };
 }
