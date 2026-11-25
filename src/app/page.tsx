@@ -9,6 +9,8 @@ import { etDate, formatEt, relTime } from "@/lib/time";
 import { providerStatuses } from "@/lib/status";
 import { Empty, Flash, Header, OpportunityCard, RefreshButton, StatusStrip } from "@/components/ui";
 import { SCORE_DISCLAIMER } from "@/engine/scoring";
+import { timingReport } from "@/engine/timing";
+import { KIND_LABEL } from "@/analysis/timing";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
     db.select({ n: sql<number>`count(*)::int` }).from(schema.ideas).where(eq(schema.ideas.status, "Ready to Film")),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.creatorAccounts).where(eq(schema.creatorAccounts.verified, true)),
   ]);
+  const timing = await timingReport(now);
   const lastJobs = await db.select().from(schema.jobRuns).orderBy(desc(schema.jobRuns.startedAt)).limit(1);
   const [lead, ...rest] = opps;
   const hasDemoGap = creatorCount[0].n === 0;
@@ -43,6 +46,17 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
           {readyCount[0].n > 0 && <> · <a href="/ideas?status=Ready%20to%20Film">{readyCount[0].n} ready to film</a></>}
         </p>
       )}
+
+      <section className="card">
+        <div className="row between"><h2>When to post</h2><a href="/timing" className="notice">details</a></div>
+        {timing.own.basis === "own" && <p><strong>Your data:</strong> {timing.own.headline}</p>}
+        <ul className="clean">
+          {timing.creators.map((r) => (
+            <li key={r.kind}>{KIND_LABEL[r.kind]}: {r.pick ? <><strong>{r.pick.block} ET</strong> <span className={`badge ${r.pick.confidence === "usable" ? "good" : "warn"}`}>{r.pick.confidence}</span></> : <span className="faint">not enough data yet</span>}</li>
+          ))}
+        </ul>
+        <p className="notice">{timing.own.basis === "own" ? "Your own results take priority." : "From patterns across the creators you watch until your own posts build up. A starting point to test."}</p>
+      </section>
 
       <section className="section">
         <div className="section-head"><h2>Best opportunities right now</h2><span className="notice" title={SCORE_DISCLAIMER}>scores are priority estimates</span></div>

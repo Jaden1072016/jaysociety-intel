@@ -5,6 +5,7 @@ import { newUploads, recentOutliers } from "@/ingest/creators";
 import { recentRelevantTrends } from "@/ingest/trends";
 import { topOpportunities } from "./generate";
 import { postingStrategy } from "./review";
+import { timingReport } from "./timing";
 
 export type BriefingContent = {
   date: string;
@@ -27,9 +28,12 @@ export async function buildBriefing(now = new Date()): Promise<BriefingContent> 
   const pipelineRows = await db.select({ status: schema.ideas.status, n: sql<number>`count(*)::int` }).from(schema.ideas).groupBy(schema.ideas.status);
   const health = await db.select().from(schema.providerStatus);
   const posting = await postingStrategy(now);
-  const headline = opps.length
+  const t = await timingReport(now);
+  const live = t.creators.find((r) => r.kind === "go_live")?.pick;
+  const timingLine = live ? ` Go-live window to try: ${live.block} ET.` : "";
+  const headline = (opps.length
     ? `${opps.length} opportunities today. Top: ${opps[0].title}`
-    : "No strong new opportunities today. Check the trends list or import research.";
+    : "No strong new opportunities today. Check the trends list or import research.") + timingLine;
   return {
     date: etDate(now), generatedAt: now.toISOString(), opportunityIds: opps.map((o) => o.id), headline,
     trends: trends.map((t) => ({ title: t.title, source: t.source, relevance: t.relevance, url: t.url, approxTraffic: t.approxTraffic })),

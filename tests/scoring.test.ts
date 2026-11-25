@@ -187,3 +187,23 @@ describe("watchlist import checks", () => {
     }
   });
 });
+
+describe("cross-creator timing patterns", () => {
+  it("weights each creator equally, gates performance claims, and separates go-live from uploads", async () => {
+    const { analyzeTiming, kindOf } = await import("@/analysis/timing");
+    const at = (iso: string) => new Date(iso);
+    const posts = [] as Parameters<typeof analyzeTiming>[0];
+    // 4 creators streaming 7-9 PM ET (00:00-02:00Z next day), one prolific creator streaming at noon
+    for (const c of ["A", "B", "C", "D"]) for (let i = 0; i < 5; i++) posts.push({ creator: c, cohort: "Mid-size", platform: "twitch", format: "live_vod", publishedAt: at(`2026-11-${10 + i}T00:30:00Z`), perfRatio: 1.4, perfConfidence: "medium" });
+    for (let i = 0; i < 40; i++) posts.push({ creator: "Big", cohort: "Large", platform: "twitch", format: "live_vod", publishedAt: at(`2026-11-${10 + (i % 10)}T17:00:00Z`), perfRatio: 0.9, perfConfidence: "medium" });
+    posts.push({ creator: "A", cohort: "Mid-size", platform: "youtube", format: "short", publishedAt: at("2026-11-10T15:00:00Z"), perfRatio: null, perfConfidence: null });
+    const r = analyzeTiming(posts, "go_live");
+    expect(r.creators).toBe(5);
+    expect(r.pick!.block).toBe("6–9 PM"); // 4 creators beat 1 prolific creator
+    expect(r.pick!.reason).toMatch(/1.4x their own usual/);
+    const noon = r.blocks.find((b) => b.block === "11 AM–3 PM")!;
+    expect(noon.medianRatio).toBeNull(); // 40 posts but only 1 creator: not enough to claim anything
+    expect(kindOf({ platform: "youtube", format: "short" })).toBe("shorts");
+    expect(analyzeTiming(posts, "shorts").pick).toBeNull(); // 1 short from 1 creator
+  });
+});

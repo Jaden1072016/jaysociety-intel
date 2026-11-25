@@ -10,6 +10,7 @@ import { seedIfEmpty } from "@/db/seed";
 import { tick, runJob } from "@/jobs";
 import { applyWatchlist, applyResearchList, applyAccounts10, applyOwnerFixes, applyDukeLive, applyApproveAll } from "@/jobs/watchlist";
 import { runSelfTest } from "./selftest";
+import { timingReport } from "@/engine/timing";
 
 let stopping = false;
 let lastTickAt = 0;
@@ -38,6 +39,15 @@ async function main() {
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-23-owner-fixes", applyOwnerFixes)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-duke-live", applyDukeLive)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-approve-all", applyApproveAll)}`);
+  await runJob("report", "timing-2026-11-25", async () => {
+    const t = await timingReport();
+    for (const r of t.creators) {
+      console.log(`[timing] ${r.kind}: ${r.posts} posts / ${r.creators} creators; pick=${r.pick ? `${r.pick.block} (${r.pick.confidence}) ${r.pick.reason}` : "none"}; days=${r.topDays.map((d) => `${d.day} ${d.share}%`).join(", ")}`);
+      for (const b of r.blocks) console.log(`[timing]   ${r.kind} ${b.block}: share=${b.creatorShare}% creators=${b.creators} posts=${b.posts} ratio=${b.medianRatio ?? "n/a"} rated=${b.ratedPosts}/${b.ratedCreators}c`);
+    }
+    console.log(`[timing] own: ${t.own.basis} ${t.own.headline}`);
+    return "logged";
+  });
   let selfTestDone = process.env.RUN_SELFTEST !== "1";
   while (!stopping) {
     const started = Date.now();
