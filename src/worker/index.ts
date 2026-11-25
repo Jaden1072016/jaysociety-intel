@@ -11,6 +11,7 @@ import { tick, runJob } from "@/jobs";
 import { applyWatchlist, applyResearchList, applyAccounts10, applyOwnerFixes, applyDukeLive, applyApproveAll } from "@/jobs/watchlist";
 import { runSelfTest } from "./selftest";
 import { timingReport } from "@/engine/timing";
+import { exportShorts } from "@/jobs/shortsExport";
 
 let stopping = false;
 let lastTickAt = 0;
@@ -39,6 +40,7 @@ async function main() {
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-23-owner-fixes", applyOwnerFixes)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-duke-live", applyDukeLive)}`);
   console.log(`[watchlist] ${await runJob("watchlist_import", "2026-11-24-approve-all", applyApproveAll)}`);
+  await runJob("report", "shorts-export-2026-11-25", exportShorts);
   await runJob("report", "timing-2026-11-25", async () => {
     const t = await timingReport();
     for (const r of t.creators) {
